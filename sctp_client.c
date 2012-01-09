@@ -1,3 +1,6 @@
+/*
+ * Compile command: gcc sctp_client.c -o sctp_client -lsctp
+ */
 #include <errno.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -193,6 +196,8 @@ int main(int argc, char** argv)
   struct sctp_event_subscribe events;
   char buffer[2000];
   bool connected = false;
+  struct sctp_sndrcvinfo sndrcvinfo;
+  int flags;
 
   printf("sizeof(union sctp_notification) = %d\n", sizeof(union sctp_notification));
   if (argc != 3)
@@ -214,78 +219,82 @@ int main(int argc, char** argv)
     return 1;
   }
 
-  clientSocket = socket(addressInfo->ai_family,
-                        addressInfo->ai_socktype,
-                        addressInfo->ai_protocol);
-  if (clientSocket < 0)
+  while (true)
   {
-    printf("error creating clientSocket, errno = %d\n", errno);
-    return 1;
-  }
-  printf("created clientSocket %d\n", clientSocket);
-
-  if (connect(clientSocket,
-              addressInfo->ai_addr,
-              addressInfo->ai_addrlen) < 0)
-  {
-    printf("connect error, errno = %d %s\n", errno, strerror(errno));
-    return 1;
-  }
-
-  memset(&events, 1, sizeof(events));
-  retVal = setsockopt(clientSocket, SOL_SCTP, SCTP_EVENTS, &events, sizeof(events));
-  if (retVal < 0)
-  {
-    printf("setsockopt(SCTP_EVENTS) error errno = %d\n", errno);
-    return 1;
-  }
-
-  printLocalAddresses(clientSocket);
-  printPeerAddresses(clientSocket);
-
-  connected = true;
-
-  memset(buffer, 0, 2000);
-  for (i = 0; i < 10; ++i)
-  {
-    buffer[i] = '0' + i;
-  }
-  retVal = sctp_sendmsg(clientSocket, buffer, 10, NULL, 0, 0, 0, 0, 0, 0);
-  if (retVal < 0)
-  {
-    printf("sctp_sendmsg error errno = %d\n", errno);
-    connected = false;
-  }
-
-  while (connected)
-  {
-    struct sctp_sndrcvinfo sndrcvinfo;
-    int flags = 0;
-    memset(buffer, 0, 2000);
-    printf("call sctp_recvmsg\n");
-    retVal = sctp_recvmsg(clientSocket, buffer, 2000, NULL, NULL, &sndrcvinfo, &flags);
-    printf("sctp_recvmsg returned %d\n", retVal);
-    if (retVal <= 0)
+    clientSocket = socket(addressInfo->ai_family,
+                          addressInfo->ai_socktype,
+                          addressInfo->ai_protocol);
+    if (clientSocket < 0)
     {
-      printf("errno = %d\n", errno);
+      printf("error creating clientSocket, errno = %d\n", errno);
+      return 1;
+    }
+    printf("created clientSocket %d\n", clientSocket);
+
+    if (connect(clientSocket,
+                addressInfo->ai_addr,
+                addressInfo->ai_addrlen) < 0)
+    {
+      printf("connect error, errno = %d %s\n", errno, strerror(errno));
+      close(clientSocket);
+      sleep(1);
+      continue;
+    }
+
+    memset(&events, 1, sizeof(events));
+    retVal = setsockopt(clientSocket, SOL_SCTP, SCTP_EVENTS, &events, sizeof(events));
+    if (retVal < 0)
+    {
+      printf("setsockopt(SCTP_EVENTS) error errno = %d\n", errno);
+      return 1;
+    }
+
+    printLocalAddresses(clientSocket);
+    printPeerAddresses(clientSocket);
+
+    connected = true;
+
+    memset(buffer, 0, 2000);
+    for (i = 0; i < 10; ++i)
+    {
+      buffer[i] = '0' + i;
+    }
+    retVal = sctp_sendmsg(clientSocket, buffer, 10, NULL, 0, 0, 0, 0, 0, 0);
+    if (retVal < 0)
+    {
+      printf("sctp_sendmsg error errno = %d\n", errno);
       connected = false;
     }
-    else if (flags & MSG_NOTIFICATION)
+
+    while (connected)
     {
-      printf("got MSG_NOTIFICATION\n");
-      printSctpNotification((union sctp_notification*)buffer);
-    }
-    else if (flags & MSG_EOR)
-    {
-      printf("got MSG_EOR\n");
-      for (i = 0; (i < retVal) && (i < 2000); ++i)
+      memset(buffer, 0, 2000);
+      flags = 0;
+      printf("call sctp_recvmsg\n");
+      retVal = sctp_recvmsg(clientSocket, buffer, 2000, NULL, NULL, &sndrcvinfo, &flags);
+      printf("sctp_recvmsg returned %d\n", retVal);
+      if (retVal <= 0)
       {
-        printf("buffer[%d] = %d '%c'\n", i, buffer[i], buffer[i]);
+        printf("errno = %d\n", errno);
+        connected = false;
+      }
+      else if (flags & MSG_NOTIFICATION)
+      {
+        printf("got MSG_NOTIFICATION\n");
+        printSctpNotification((union sctp_notification*)buffer);
+      }
+      else if (flags & MSG_EOR)
+      {
+        printf("got MSG_EOR\n");
+        for (i = 0; (i < retVal) && (i < 2000); ++i)
+        {
+          printf("buffer[%d] = %d '%c'\n", i, buffer[i], buffer[i]);
+        }
       }
     }
-  }
 
-  close(clientSocket);
+    close(clientSocket);
+  }
 
   return 0;
 }

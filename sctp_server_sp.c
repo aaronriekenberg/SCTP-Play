@@ -1,3 +1,6 @@
+/*
+ * Compile command: gcc sctp_server_sp.c -o sctp_server_sp -lsctp
+ */
 #include <errno.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -220,6 +223,9 @@ int main(int argc, char** argv)
   struct AddrPortStrings clientAddrPortStrings;
   struct sctp_event_subscribe events;
   char buffer[2000];
+  struct sctp_sndrcvinfo sndrcvinfo;
+  int flags;
+  socklen_t clientAddressSize;
 
   if (argc != 3)
   {
@@ -284,9 +290,8 @@ int main(int argc, char** argv)
 
   while (1)
   {
-    struct sctp_sndrcvinfo sndrcvinfo;
-    int flags = 0;
-    socklen_t clientAddressSize = sizeof(clientAddress);
+    flags = 0;
+    clientAddressSize = sizeof(clientAddress);
     printf("before sctp_recvmsg\n");
     retVal = sctp_recvmsg(serverSocket, buffer, 2000, 
                           (struct sockaddr*)&clientAddress, &clientAddressSize,
@@ -311,12 +316,14 @@ int main(int argc, char** argv)
         continue;
       }
 
-      printf("received message length %d from client '%s':'%s'\n",
+      printf("received message length %d from client %s:%s\n",
              retVal,
              clientAddrPortStrings.addrString, clientAddrPortStrings.portString);
 
       printf("call sctp_sendmsg\n");
-      retVal = sctp_sendmsg(serverSocket, buffer, retVal, (struct sockaddr*)&clientAddress, clientAddressSize, 0, 0, 0, 0, 0);
+      retVal = sctp_sendmsg(serverSocket, buffer, retVal, 
+                            (struct sockaddr*)&clientAddress, 
+                            clientAddressSize, 0, 0, 0, 0, 0);
       printf("sctp_sendmsg returns %d\n", retVal);
     }
   }
